@@ -1,0 +1,7 @@
+﻿<div ng-if="messages.length > 0  && messageFor == currentTab" class="alert alert-{{ messageType }} messages-container">
+    <span ng-if="messages.length == 1"> {{ messages[0] }} </span>
+
+    <ul ng-if="messages.length > 1">
+        <li ng-repeat="message in messages">{{ message }}</li>
+    </ul>
+</div>

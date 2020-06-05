@@ -1,338 +1,391 @@
-﻿//GLOBAL VARIABLES
-// https://localhost:44371/
-var apiUrl = "https://mynoteapi.hakanolcer.xyz/";
-
-var selectedNote = null;
-var selectedLink = null;
-
-//functions
-function checkLogin() {         
-    //todo: Sessionstorage ve localstorage de tutulan login bilgilerine bakarak
-    //login olup olmadığına karar ver ve eğer loginse uygulamayı aç
-    //login değilse login/register sayfasını göster
-
-    var loginData = getLoginData();
-    if (!loginData || !loginData.access_token) {
-        showLoginPage();
-        return;
-    }
-    // is token valid ?
-    ajax("api/Account/UserInfo", "GET",null,
-        function (data) {
-            showAppPage();
-        },
-        function () {
-            showLoginPage();
-        });
+﻿//AngularJs Version
+var apiUrl = "https://mynoteapi.hakanolcer.xyz/"
+var app = angular.module("myApp", ["ngRoute"]);
 
 
-    //$.ajax({
-    //    url: apiUrl + "api/Account/UserInfo",
-    //    type: "GET",
-    //    headers: getAuthHeader(),
-    //    success: function (data) {
-    //        showAppPage();
-    //    },
-    //    error: function () {
-    //        showLoginPage();
-    //    }
-    //});
+app.directive("messages", function () {
+    return {
+        templateUrl: "/directives/messages.html"
+    };
 
-}
-function showAppPage() {
-    $(".only-logged-out").hide();
-    $(".only-logged-in").show();
-    $(".page").hide();
+});
 
-    // retrieve the notes (notları getir)
-    ajax("api/Notes/List", "GET",null,
-        function (data) {
-            console.log(data);
+app.config(function ($routeProvider) {
+    $routeProvider
+        .when("/", { templateUrl: "pages/app.html", controller: "appController" })
+        .when("/login", { templateUrl: "pages/login.html", controller: "loginController" });
+})
+    .run(function ($rootScope, $location) {
 
-            $("#notes").html("");
-            for (var i = 0; i < data.length; i++) {
-                //her birinin içine ekle
-                //var a= document.createElement("a");   jQuery version
-                addMenuLink(data[i]);
+        //https://stackoverflow.com/questions/26340181/angularjs-copy-common-properties-from-one-object-to-another/26341011#26341011
+        $rootScope.update = function (srcObj, destObj) {
+            for (var key in destObj) {
+                if (destObj.hasOwnProperty(key) && srcObj.hasOwnProperty(key)) {
+                    destObj[key] = srcObj[key];
+                }
+            }
+        }
+
+
+        $rootScope.loginData = function () {
+            var loginDataJson = localStorage["login"] || sessionStorage["login"];
+
+            if (!loginDataJson) {
+                return null;
             }
 
-            //show page when it's ready
-            $("#page-app").show();
-        },
-        function () {
+            try {
+                return JSON.parse(loginDataJson);
+            } catch (e) {
+                return null;
+            }
+        };
 
+        $rootScope.isLoggedIn = function () {
+            if ($rootScope.loginData()) {
+                return true;
+            }
+            return false;
+        };
+
+        // https://stackoverflow.com/questions/11541695/redirecting-to-a-certain-route-based-on-condition/11542936#11542936
+        // register listener to watch route changes
+        $rootScope.$on("$routeChangeStart", function (event, next, current) {
+            if ($rootScope.loginData() == null) {
+                //giriş yapmış kullanıcı yoksa
+                // no logged user, we should be going to #login
+                if (next.templateUrl != "pages/login.html") {       //yönlenmek üzere olunan sayfa login değilse
+                    // not going to #login, we should redirect now
+                    $location.path("/login");
+                }
+            }
         });
-  
-}
-
-function addMenuLink(note, isActive = false) {
-    var a = $("<a />")      //elementi oluştur
-        .attr("href", "#")
-        .addClass("list-group-item list-group-item-action show-note")     //class ekle
-        .text(note.Title)                                    //metnini ekle
-        .prop("note", note);                                 //oluştur
-
-    if (isActive) {
-        $(".show-note").removeClass("class");
-        a.addClass("active");
-        selectedLink = a.get(0);
-        selectedNote = note;
-
-
-    }
-    $("#notes").prepend(a);
-
-}
-function showLoginPage() {
-    $(".only-logged-in").hide();
-    $(".only-logged-out").show();
-    $(".page").hide();
-    $("#page-login").show();
-}
-
-function getAuthHeader() {
-    return { Authorization: "Bearer " + getLoginData().access_token };
-}
-
-function ajax(url, type,data, successFunc, errorFunc) {
-    $.ajax({
-        url: apiUrl + url,
-        type: type,
-        data:data,
-        headers: getAuthHeader(),
-        success: successFunc,
-        error: errorFunc
     });
-}
 
-function addNote() {
-    ajax("api/Notes/New", "POST",
-        { Title: $("#title").val(), Content: $("#content").val() },
-        function (data) {
-            addMenuLink(data, true);
-        },
-        function () {
 
-        }
-    );
-}
+app.controller("mainController", function ($scope, $http, $location) {
+    $scope.isLoading = false;
+    $scope.showLoading = function () {
+        $scope.isLoading = true;
+    };
+    $scope.hideLoading = function () {
+        $scope.isLoading = false;
+    };
 
-function updateNote() {
-    ajax("api/Notes/Update/" + selectedNote.Id, "PUT",
-        { Id: selectedNote.Id, Title: $("#title").val(), Content: $("#content").val() },
-        function (data) {
-            selectedLink.note = data;
-            selectedLink.textContent = data.Title;
-            //$(selectedLink).text(data.Title);
-        },
-        function () {
 
-        }
-    );
-}
 
-function getLoginData() {
-    //todo: sessionstorage da, eğer orada bulamadıysan
-    //localstorage da kayıtlı login data yı json'dan object'e dönüştür ve yolla
-    //eğer yoksa null yolla
-    //s.storage da login diye bir data varsa
-    var json = sessionStorage["login"] || localStorage["login"];
-    if (json) {
-        try {
-            return JSON.parse(json)
-        } catch (e) {
+    $scope.token = function () {
+        var loginData = $scope.loginData();
+        if (!loginData) {
             return null;
-        }      
+        }
+
+        return loginData.access_token;
     }
-    return null;
-}
 
-function success(message) {
-    $(".tab-pane.active .message")
-        .removeClass("alert-danger")
-        .addClass("alert-success")
-        .text(message)
-        .show();
-}
+    $scope.logout = function () {
+        //token ları temizle, redirecte çekeriz
+        localStorage.removeItem("login");
+        sessionStorage.removeItem("login");
+        $location.path("/login");
+    };
 
-function error(modelState) {
-    if (modelState) {
-        var errors = [];
-        for (var prop in modelState) {
-            for (var i = 0; i < modelState[prop].length; i++) {
-                errors.push(modelState[prop][i]);
+
+    $scope.ajax = function (apiUri, method, data, isAuth, successFunc, errorFunc) {
+        $scope.showLoading();
+        var headers = null;
+
+        if (isAuth)
+            headers = { Authorization: "Bearer " + $scope.token() };
+
+
+        $http({
+            url: apiUrl + apiUri,
+            method: method,
+            headers: headers,
+            data: data
+        }).then(
+            function (response) {
+                successFunc(response);
+                $scope.hideLoading();
+            },
+            function (response) {
+                errorFunc(response);
+                $scope.hideLoading();
+            }
+        );
+    };
+
+    //if there is a token, this methods check , if it is still valid
+    $scope.checkAuth = function () {
+        if ($scope.loginData()) {
+            $scope.ajax("api/Account/UserInfo", "get", null, true,
+                function (response) {
+                    if (response.data.Email != $scope.loginData().userName) {
+                        $scope.logout();
+                    }
+                },
+                function (response) {
+                    if (response.status == 401) {
+                        $scope.logout();
+                    }
+                });
+        }
+    };
+
+    $scope.checkAuth();
+
+
+});   //html den sorumlu ana controller
+
+app.controller("loginController", function ($scope, $timeout, $location, $httpParamSerializer) {
+
+    $scope.currentTab = "login";  //  login |  register
+    $scope.messageFor = "login";  // login | register
+    $scope.messageType = "info";  // success | warning |danger | info
+    $scope.messages = [];  // string arrray ["message 1", "message 2"]
+
+    $scope.registerForm = {
+        //web api nin beklediği şekilde. account cont. register kısmındaki
+        Email: "",
+        Password: "",
+        ConfirmPassword: "",
+    };
+
+    $scope.loginForm = {
+        grant_type: "password",
+        username: "",
+        password: ""
+    };
+
+    $scope.rememberMe = false;
+
+    $scope.error = function (data) {
+        $scope.messageFor = $scope.currentTab;
+        $scope.messageType = "danger";
+        $scope.messages = [];
+        if (data.ModelState) {
+            for (var prop in data.ModelState) {
+                //data.ModelState[prop][0];     //gelen nesnenin içinde ModelState diye bir nesne var , onun içinde prop lar var
+                for (var index in data.ModelState[prop]) {
+                    $scope.messages.push(data.ModelState[prop][index]);
+                }
             }
         }
-
-        var ul = $("<ul/>");
-        for (var i = 0; i < errors.length; i++) {
-            ul.append($("<li/>").text(errors[i]));
+        if (data.error_description) {
+            $scope.messages.push(data.error_description);
         }
-        $(".tab-pane.active .message")
-            .removeClass("alert-success")
-            .addClass("alert-danger")
-            .html(ul)
-            .show();
-    }
-}
 
-function errorMessage(message) {
-    if (message) {
-        $(".tab-pane.active .message")
-            .removeClass("alert-success")
-            .addClass("alert-danger")
-            .text(message)
-            .show();
-    }
-}
 
-function resetLoginForms() {
-    $(".message").hide();
-    $("#login form").each(function () {
-        this.reset();
-    });
-}
+    };
 
-function resetNoteForm() {
-    selectedLink = null;
-    selectedNote = null;
-    $(".show-note").removeClass("active");
-    $("#title").val("");
-    $("#content").val("");
-}
+    $scope.success = function (message) {
+        $scope.messageFor = $scope.currentTab;
+        $scope.messageType = "success";
+        $scope.messages = [message];
 
-//EVENTS
-$(document).ajaxStart(function () {
-    $(".loading").removeClass("d-none");
-});
-$(document).ajaxStop(function () {
-    $(".loading").addClass("d-none");
-});
+    };
 
-//  register
-$("#signupform").submit(function (event) {
-    event.preventDefault();
-    var formData = $(this).serialize();
+    $scope.resetRegisterForm = function () {
+        $scope.registerForm.Email = "";
+        $scope.registerForm.Password = "";
+        $scope.registerForm.ConfirmPassword = "";
+    };
 
-    $.post(apiUrl + "api/Account/Register", formData, function (data) {
-        resetLoginForms();
-        success("Your account has been successfully created.");
-    }).fail(function (xhr) {
-        error(xhr.responseJSON.ModelState);
+
+    $scope.resetLoginForm = function () {
+        $scope.loginForm.username = "";
+        $scope.loginForm.password = "";
+        $scope.rememberMe = false;
+    };
+
+    $scope.$watch("currentTab", function () {
+        $scope.resetLoginForm();
+        $scope.resetRegisterForm();
+        $scope.messages = [];
     });
 
-});
 
-//  login
-$("#signinform").submit(function (event) {
-    event.preventDefault();
-    var formData = $(this).serialize();
+    $scope.registerSubmit = function () {
 
-    $.post(apiUrl + "Token", formData, function (data) {
+        $scope.ajax("api/Account/Register", "post", $scope.registerForm, false,
+            function (response) {
+                $scope.resetRegisterForm();
+                $scope.success("Your account has been successfully created.")
+            },
+            function (response) {
+                $scope.error(response.data);
+            }
+        );
 
-        //remember me mi ?
-        //json nesnesini js ye çevirir
-        var datastr = JSON.stringify(data);
+    };
 
-        if ($("#signinrememberme").prop("checked")) {
-            sessionStorage.removeItem("login");
-            localStorage["login"] = datastr;
+    $scope.loginSubmit = function () {
+        $scope.ajax("Token", "post", $httpParamSerializer($scope.loginForm), false,
+            function (response) {
+                //eski loginleri temizle
+                localStorage.removeItem("login");
+                sessionStorage.removeItem("login");
+                var storage = $scope.rememberMe ? localStorage : sessionStorage;
+                storage["login"] = JSON.stringify(response.data);
+                //bunun üstünde yapcaz yoksa remember me yi kaybederiz
+
+                $scope.resetLoginForm();
+
+                $scope.success("Your login is successful. Redirecting...");
+                $timeout(function () {
+                    $location.path("/");
+                }, 1000);
+
+            },
+            function (response) {
+                console.log(response);
+                $scope.error(response.data);
+            }
+        );
+    };
+});     // view /login
+
+app.controller("appController", function ($scope, $location) {
+    $scope.notes = [];
+    $scope.currentNote = null;
+    $scope.noteForm = {
+        Id: null,
+        Title: "",
+        Content: "",
+        CreationTime: "",
+        ModificationTime: ""
+    };
+
+    $scope.getNotes = function () {
+        $scope.ajax("api/Notes/List", "get", null, true,
+            function (response) {
+                $scope.notes = response.data;
+            },
+            function (response) {
+
+            }
+        );
+    };
+
+    $scope.showNote = function (event, note) {
+        if (event) {
+            event.preventDefault();
+
+        }
+        $scope.currentNote = note;
+        $scope.noteForm = angular.copy(note);
+    };
+
+    $scope.putNote = function () {
+        var data = {
+            Id: $scope.noteForm.Id,
+            Title: $scope.noteForm.Title,
+            Content: $scope.noteForm.Content,
+
+        };
+        $scope.ajax("api/Notes/Update/" + data.Id, "put", data, true,
+            function (response) {
+                //run da
+                $scope.update(response.data, $scope.currentNote);
+            },
+            function (response) {
+
+            }
+        );
+    };
+
+    $scope.postNote = function () {
+        var data = {
+
+            Title: $scope.noteForm.Title,
+            Content: $scope.noteForm.Content,
+
+        };
+        $scope.ajax("api/Notes/New", "post", data, true,
+            function (response) {
+                //run da
+                $scope.notes.push(response.data);
+                $scope.showNote(null, response.data);
+            },
+            function (response) {
+
+            }
+        );
+    };
+
+    $scope.submitNote = function () {
+        //current not varsa put note yapıcaz , yoksa post note yapıcaz
+        if ($scope.currentNote) {
+            $scope.putNote();
         } else {
-            localStorage.removeItem("login");
-            sessionStorage["login"] = datastr;
+            $scope.postNote();
         }
+    };
 
+    $scope.newNote = function () {
+        $scope.currentNote = null;
+        $scope.noteForm = {
+            Id: null,
+            Title: "",
+            Content: "",
+            CreationTime: "",
+            ModificationTime: "",
+        };
+        document.getElementById("title").focus();
+    };
 
-        resetLoginForms();
-        success("Your have been logged in successfully. Redirecting..");
-
-        setTimeout(function () {
-            resetLoginForms();
-            showAppPage();
-        }, 1000);
-    }).fail(function (xhr) {
-        errorMessage(xhr.responseJSON.error_description);
-    });
-
-});
-
-
-// https://getbootstrap.com/docs/4.0/components/navs/#events
-$('#login a[data-toggle="pill"]').on('shown.bs.tab', function (e) {
-    // e.target // newly activated tab
-    // e.relatedTarget // previous active tab
-
-    resetLoginForms();
-});
-
-$(".navbar-login a").click(function (event) {
-    event.preventDefault();
-    var href = $(this).attr("href");
-
-   //https://getbootstrap.com/docs/4.0/components/navs/#via-javascript
-
-    $('#pills-tab a[href="' + href + '"]').tab('show'); // Select tab by name
-
-});
-
-//  logout
-$("#btnLogout").click(function (event) {
-    event.preventDefault();
-    resetNoteForm();
-    sessionStorage.removeItem("login");
-    localStorage.removeItem("login");
-    showLoginPage();
-})
-
-$("body").on("click", ".show-note", function (event) {
-    event.preventDefault();
-    selectedNote = this.note;
-    selectedLink = this;
-
-    $("#title").val(selectedNote.Title);
-    $("#content").val(selectedNote.Content);
-
-    $(".show-note").removeClass("active");
-    $(this).addClass("active");
-});
-
-$(".add-new-note").click(function () {
-    resetNoteForm();
-});
-
-$("#frmNote").submit(function (event) {
-    event.preventDefault();
-
-    //routing
-    if (selectedNote) {
-        updateNote();
-    } 
-    else {
-        addNote();  //ajax isteği gönderen metot
-    }
-})
-
-// delete note
-$("#btnDelete").click(function () {
-    if (selectedNote) {
-        if (confirm("Are you sure to delete the selected note?")) {
-            ajax("api/Notes/Delete/" + selectedNote.Id, "DELETE", null,
-                function (data) {
-                    $(selectedLink).remove();
-                    resetNoteForm();
+    $scope.deleteNote = function () {
+        if ($scope.currentNote) {
+            $scope.ajax("api/Notes/Delete/" + $scope.currentNote.Id, "delete", null, true,
+                function (response) {
+                    
+                    for (var i = 0; i < $scope.notes.length; i++) {
+                        if ($scope.notes[i] == $scope.currentNote) {
+                            //js array remove element
+                            $scope.notes.splice(i, 1);
+                            //currentNote gitti artık 
+                            //$scope.currentNote = null;
+                            $scope.newNote();
+                            return;
+                        }
+                    }
                 },
-                function () {
+                function (response) {
 
                 }
             );
         }
-    }
-    else {
-        if (confirm("Are you sure to delete the draft?")) {
-            resetNoteForm();
-        }
-    }
-});
 
-//ACTIONS
-checkLogin();
+    };
+    $scope.getNotes();
+
+});     //view  /app
+
+// JQuery Document Ready
+$(function () {
+    $(".navbar-login a").click(function (event) {
+        event.preventDefault();
+        var href = $(this).attr("href");
+        // https://getbootstrap.com/docs/4.0/components/navs/#via-javascript
+        $('#pills-tab a[href="' + href + '"]').tab('show'); // Select tab by name
+    });
+
+    $('body').on('click', '#pills-tab a', function (e) {
+        e.preventDefault()
+        $(this).tab('show')
+    });
+
+
+    // https://stackoverflow.com/questions/37769900/how-to-change-a-scope-variable-outside-the-controller-in-angularjs
+    // https://www.hiren.dev/2014/06/how-to-access-scope-variable-outside.html
+    $('body').on('shown.bs.tab', 'a[data-toggle="pill"]', function (e) {
+        //var $scope = angular.element($('[ng-controller="mainController"]')[0]).scope();
+        var $scope = angular.element($('[ng-view]')[0]).scope();
+        $scope.currentTab = $(e.target).attr("id") == "pills-signup-tab" ? "register" : "login";
+        $scope.$apply();   // angular a haber veriyoruz. bak bir şeyler değişti seninde arayüz öğelerinde bişeyler değiştirmen gerekebilir.
+        //console.log(e.target); //aktif olan pill i taşıyor
+        //e.target // newly activated tab
+        //e.relatedTarget // previous active tab
+    })
+});
