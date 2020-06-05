@@ -5,7 +5,7 @@ var app = angular.module("myApp", ["ngRoute"]);
 
 app.directive("messages", function () {
     return {
-        templateUrl: "/directives/messages.html"
+        templateUrl: "directives/messages.html"
     };
 
 });
@@ -55,7 +55,7 @@ app.config(function ($routeProvider) {
                 //giriş yapmış kullanıcı yoksa
                 // no logged user, we should be going to #login
                 if (next.templateUrl != "pages/login.html") {       //yönlenmek üzere olunan sayfa login değilse
-                    // not going to #login, we should redirect now
+                    // not going to #login, we should rsedirect now
                     $location.path("/login");
                 }
             }
